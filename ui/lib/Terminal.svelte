@@ -644,7 +644,7 @@
   function cellAt(col: number, row: number): [number, number] {
     const [cw, ch] = [cell.w / devicePixelRatio, cell.h / devicePixelRatio];
     if (!remote) {
-      const pad = app.settings?.pane_padding ?? 6;
+      const pad = app.settings?.pane_padding ?? 5;
       return [pad + col * cw, pad + row * ch];
     }
     const { w, h, k } = view;
@@ -785,7 +785,7 @@
   });
 </script>
 
-<div class="term" bind:this={box} style:background={bg} style:--pad="{app.settings?.pane_padding ?? 6}px">
+<div class="term" bind:this={box} style:background={bg} style:--pad="{app.settings?.pane_padding ?? 5}px">
   <!-- What's behind the text (Settings › Terminal), under the terminal's own colour; cells with
        a colour of their own stay solid. -->
   <Backdrop place="terminal" tint={(a) => css(base, a)} />

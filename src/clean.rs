@@ -383,9 +383,6 @@ impl Settings {
             i.data.starts_with("data:image/") && i.data.len() <= 1024 * 1024 && seen.insert(i.data.clone())
         });
         self.custom_icons.truncate(100);
-        if self.broadcast_outline_color.is_empty() {
-            self.broadcast_outline_color = d.broadcast_outline_color;
-        }
     }
 }
 
@@ -453,5 +450,16 @@ mod tests {
         st.sanitize();
         assert_eq!((st.font_size, st.scrollback, st.automation_port), (14.0, 100, 8721));
         assert!(!st.ssh_ciphers.is_empty());
+    }
+
+    /// The broadcast outline's colour is a picked one, or "" for the accent. Anything else follows
+    /// the accent too, because a terminal that gets your keys must never lose its outline.
+    #[test]
+    fn outline_colour_follows_the_accent_unless_picked() {
+        for (saved, kept) in [("#ABCDEF", "#abcdef"), ("", ""), ("red", "")] {
+            let mut st = Settings { broadcast_outline_color: saved.into(), ..Default::default() };
+            st.sanitize();
+            assert_eq!(st.broadcast_outline_color, kept);
+        }
     }
 }

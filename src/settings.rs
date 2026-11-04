@@ -177,8 +177,8 @@ pub struct Settings {
     pub high_priority: bool,
     /// Hex SHA-256 of the custom.css the user kept; a different one asks again (support.rs `custom_css`).
     pub custom_css: String,
-    /// The outline on terminals broadcast types into: a style from `OUTLINES` and its colour
-    /// (once `multi_outline`, from when broadcast was called multi-exec).
+    /// The outline on terminals broadcast types into: a style from `OUTLINES` and its colour,
+    /// `#rrggbb` or "" for the accent (once `multi_outline`, from when broadcast was called multi-exec).
     #[serde(alias = "multi_outline")]
     pub broadcast_outline: String,
     #[serde(alias = "multi_outline_color")]
@@ -294,16 +294,16 @@ impl Default for Settings {
             font_size: 14.0,
             override_sessions: true,
             cursor: Cursor::Block,
-            cursor_blink: true,
+            cursor_blink: false,
             line_height: 1.0,
-            pane_padding: 6,
+            pane_padding: 5,
             scrollbar: true,
             highlight: true,
             highlights: Highlight::defaults(),
             background: Background::default(),
             sidebar_background: Background::default(),
             bar_background: Background::default(),
-            scrollback: 10_000,
+            scrollback: 20_000,
             scroll_on_output: false,
             copy_on_select: true,
             right_click_paste: true,
@@ -352,8 +352,8 @@ impl Default for Settings {
             update_notify: true,
             high_priority: false,
             custom_css: String::new(),
-            broadcast_outline: "ring".into(),
-            broadcast_outline_color: "#9aa3ad".into(),
+            broadcast_outline: "static".into(),
+            broadcast_outline_color: String::new(),
             focus_animated: true,
             accent: String::new(),
             custom_schemes: vec![],
