@@ -761,7 +761,8 @@ Quiet and exact: small, flat faces that brighten a step under the pointer.
   it, a flat chevron (`fg`, amber when pointed at) lies over the strip: the tabs are hidden under
   its 26px and fade in over the next 21px, and the chevron's button covers both, since what shows
   of a tab there is mostly its X and a click meant to go back would close it. It glides the strip
-  a page that way. A tab scrolled into view (a click, Ctrl+Tab, All tabs) glides too, so tabs of
+  up to a page that way, never past the tab in use: that tab stays in view, clear of the far
+  chevron and fade, and the chevron dims once it can't go further. A tab scrolled into view (a click, Ctrl+Tab, All tabs) glides too, so tabs of
   one name still show which way the strip went, and stops clear of the chevron and the fade
   (`scroll-padding-inline`). Reduced motion makes both jump.
 - **All tabs:** while tabs don't fit, the tab-strip tools start with a flat chevron ("All tabs
