@@ -760,9 +760,13 @@ Quiet and exact: small, flat faces that brighten a step under the pointer.
   it in `warn`. The tab's icon is always in its kind hue, and the active tab's name is in
   `short-strong`, as the title bar's field names it (the mono's widths don't change with weight,
   so the strip doesn't shift). A drag shows a 2px amber insertion bar. Tabs keep their width;
-  more than fit scroll sideways (the wheel scrolls it), with no scrollbar: the strip fades out
-  over its last 34px at an end with tabs past it, and a tab scrolled into view stops 34px clear of
-  that edge (`scroll-padding-inline`), so it never sits under the fade.
+  more than fit scroll sideways (the wheel scrolls it), with no scrollbar. At an end with tabs past
+  it, a flat chevron (`fg`, amber when pointed at) lies over the strip: the tabs are hidden under
+  its 26px and fade in over the next 21px, and the chevron's button covers both, since what shows
+  of a tab there is mostly its X and a click meant to go back would close it. It glides the strip
+  a page that way. A tab scrolled into view (a click, Ctrl+Tab, All tabs) glides too, so tabs of
+  one name still show which way the strip went, and stops clear of the chevron and the fade
+  (`scroll-padding-inline`). Reduced motion makes both jump.
 - **All tabs:** while tabs don't fit, the tab-strip tools start with a flat chevron ("All tabs
   (16)"), amber while open. It drops a menu (`.tasks-list.all-tabs`) hung from its end, one row per
   tab in strip order: its icon in its kind hue and its name, the tab in use on the `picked` wash and

@@ -533,6 +533,15 @@
   $effect(() => {
     if (allTabs && !strip.length) allTabs = null;
   });
+  /** The arrow over a faded end: the strip glides a page that way, keeping the last tab in view
+   *  (`way`: -1 toward the start, 1 toward the end, in reading order). */
+  function stepTabs(way: -1 | 1) {
+    const el = tabsEl;
+    if (!el) return;
+    const rtl = document.documentElement.dir === "rtl";
+    const page = Math.max(el.clientWidth - 2 * 55, 55);
+    el.scrollBy({ left: way * (rtl ? -1 : 1) * page, behavior: still ? "auto" : "smooth" });
+  }
 
   // ---- background tasks: a tab off the strip and the panes, still running, listed under Tasks
   // and brought back into a tab from there (or the palette). One that ends there stays, to be read.
@@ -882,7 +891,8 @@
   // The focused pane's tab stays in view in the strip (it scrolls when the tabs don't fit).
   $effect(() => {
     void panes[focus];
-    tick().then(() => document.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
+    // Gliding, so with tabs of one name you still see which way the strip went.
+    tick().then(() => document.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: still ? "auto" : "smooth" }));
   });
 
   const place = (pane: number) => {
@@ -1500,6 +1510,19 @@
     <main class="center">
       <header class="strip">
         <Backdrop place="bar" tint={(a) => `rgba(var(--panel-rgb), ${a})`} />
+        <!-- The arrows lie over the faded ends and take every click there: what shows of a tab
+             past the edge is mostly its X, so a click meant to go back would close it. -->
+        <div class="tabs-wrap">
+        {#if tabsOver.start}
+          <button class="flat icon-only tabs-step start" tabindex="-1" title={_("Earlier tabs")} aria-label={_("Earlier tabs")} onclick={() => stepTabs(-1)}
+            ><Icon name="chevron-right" size={15} /></button
+          >
+        {/if}
+        {#if tabsOver.end}
+          <button class="flat icon-only tabs-step end" tabindex="-1" title={_("Later tabs")} aria-label={_("Later tabs")} onclick={() => stepTabs(1)}
+            ><Icon name="chevron-right" size={15} /></button
+          >
+        {/if}
         <div
           class="tabs"
           class:over-start={tabsOver.start}
@@ -1572,6 +1595,7 @@
               <button class="flat icon-only close" title={tip(_("Close"), "close-tab")} onclick={() => close(t.key)}><Icon name="x" size={15} /></button>
             </div>
           {/each}
+        </div>
         </div>
         <!-- the tools act on tabs, so they come as the tabs do: files and snippets with a terminal tab, broadcast with two tabs -->
         <div class="tools row">
@@ -2476,35 +2500,81 @@
     background: rgba(var(--panel-rgb), var(--chrome-alpha));
     box-shadow: inset 0 -1px var(--line);
   }
+  /* the tabs and the arrows over their ends. At an end with tabs past it the tabs are hidden under
+     the arrow (`--edge`, its width) and fade in over `--fade` after it; a tab scrolled into view
+     stops clear of both. */
+  .tabs-wrap {
+    --edge: var(--control);
+    --fade: 21px;
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+  }
   .tabs {
     flex: 1;
     min-width: 0;
     display: flex;
     overflow-x: auto;
     scrollbar-width: none;
+    --hide-start: 0px;
     --fade-start: 0px;
+    --hide-end: 0px;
     --fade-end: 0px;
     --toward: right;
-    /* a tab scrolled into view (Ctrl+Tab, All tabs) stops clear of the fade */
-    scroll-padding-inline: 34px;
+    scroll-padding-inline: calc(var(--edge) + var(--fade));
   }
   :global([dir="rtl"]) .tabs {
     --toward: left;
   }
-  /* tabs past an end: the strip fades out over the last 34px there, so it reads as going on */
+  /* tabs past an end: hidden under its arrow, then fading in, so the strip reads as going on */
   .tabs.over-start {
-    --fade-start: 34px;
+    --hide-start: var(--edge);
+    --fade-start: var(--fade);
   }
   .tabs.over-end {
-    --fade-end: 34px;
+    --hide-end: var(--edge);
+    --fade-end: var(--fade);
+  }
+  .tabs-step {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 1px; /* clear of the strip's bottom line */
+    /* over the fade too, which shows a tab's X: a click there goes this way, it closes nothing */
+    width: calc(var(--edge) + var(--fade));
+    padding: 0;
+    border-radius: 0;
+    color: var(--fg);
+  }
+  /* the chevron in the outer part, over the hidden tabs; the faded ones show through the rest */
+  .tabs-step.start {
+    inset-inline-start: 0;
+    padding-inline-end: var(--fade);
+  }
+  .tabs-step.end {
+    inset-inline-end: 0;
+    padding-inline-start: var(--fade);
+  }
+  .tabs-step:hover:not(:disabled) {
+    background: none;
+    color: var(--gold);
+  }
+  /* one chevron, pointing the way it goes: turned around for the start, and both in right to left */
+  .tabs-step.start :global(.icon),
+  :global([dir="rtl"]) .tabs-step.end :global(.icon) {
+    transform: scaleX(-1);
+  }
+  :global([dir="rtl"]) .tabs-step.start :global(.icon) {
+    transform: none;
   }
   .tabs:is(.over-start, .over-end) {
     mask-image: linear-gradient(
       to var(--toward),
-      transparent,
-      #000 var(--fade-start),
-      #000 calc(100% - var(--fade-end)),
-      transparent
+      transparent var(--hide-start),
+      #000 calc(var(--hide-start) + var(--fade-start)),
+      #000 calc(100% - var(--hide-end) - var(--fade-end)),
+      transparent calc(100% - var(--hide-end))
     );
   }
   .tab {
