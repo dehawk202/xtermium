@@ -499,8 +499,6 @@
     const room = el.scrollWidth - el.clientWidth;
     const over = { start: at > 1, end: at < room - 1 };
     if (over.start !== tabsOver.start || over.end !== tabsOver.end) tabsOver = over;
-    const can = { start: over.start && tabsRoom(-1) >= 1, end: over.end && tabsRoom(1) >= 1 };
-    if (can.start !== tabsCan.start || can.end !== tabsCan.end) tabsCan = can;
   }
   // The strip's width and every tab's (titles change as shells run) can bring tabs in or out of view.
   $effect(() => {
@@ -515,33 +513,27 @@
   $effect(() => {
     if (allTabs && !strip.length) allTabs = null;
   });
-  /** How far the strip may scroll `way` (-1 toward the start, 1 toward the end, in reading order)
-   *  with the tab in use still in view, clear of the arrow and fade: a page at a time otherwise
-   *  overshot it, and you lost where you were. */
-  function tabsRoom(way: -1 | 1): number {
-    const el = tabsEl;
-    if (!el) return 0;
-    const a = el.querySelector<HTMLElement>(".tab.active");
-    const page = Math.max(el.clientWidth - 2 * 55, 55);
-    if (!a) return page;
-    const rtl = document.documentElement.dir === "rtl";
-    const pad = parseFloat(getComputedStyle(el).scrollPaddingInlineStart) || 0;
-    const v = el.getBoundingClientRect();
-    const r = a.getBoundingClientRect();
-    // Toward the end the tabs move toward the start, so the tab in use may go as far as the start's
-    // padding; toward the start, as far as the end's.
-    const toLeft = way > 0 !== rtl;
-    const room = toLeft ? r.left - (v.left + pad) : v.right - pad - r.right;
-    return Math.min(page, Math.max(room, 0));
-  }
-  /** Whether each arrow can move the strip, the tab in use staying in view. */
-  let tabsCan = $state({ start: false, end: false });
-  /** The arrow over a faded end: the strip glides up to a page that way, the tab in use in view. */
+  /** The arrow over a faded end: the strip glides a page that way (`way`: -1 toward the start, 1
+   *  toward the end, in reading order). A page that would carry the tab in use out of view stops
+   *  short, with it at the far side (clear of the arrow and fade there), so you see where you were
+   *  before leaving it; the next click carries on past it. */
   function stepTabs(way: -1 | 1) {
     const el = tabsEl;
-    const by = tabsRoom(way);
-    if (!el || by < 1) return;
+    if (!el) return;
     const rtl = document.documentElement.dir === "rtl";
+    let by = Math.max(el.clientWidth - 2 * 55, 55);
+    const a = el.querySelector<HTMLElement>(".tab.active");
+    if (a) {
+      const pad = parseFloat(getComputedStyle(el).scrollPaddingInlineStart) || 0;
+      const v = el.getBoundingClientRect();
+      const r = a.getBoundingClientRect();
+      // Toward the end the tabs move toward the start, so the tab in use may go as far as the
+      // start's padding; toward the start, as far as the end's.
+      const toLeft = way > 0 !== rtl;
+      const room = toLeft ? r.left - (v.left + pad) : v.right - pad - r.right;
+      // Already at that side, or past it: a whole page, so the click always moves the strip.
+      if (room >= 21) by = Math.min(by, room);
+    }
     el.scrollBy({ left: way * (rtl ? -1 : 1) * by, behavior: still ? "auto" : "smooth" });
   }
 
@@ -894,10 +886,7 @@
   $effect(() => {
     void panes[focus];
     // Gliding, so with tabs of one name you still see which way the strip went.
-    tick().then(() => {
-      document.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: still ? "auto" : "smooth" });
-      measureTabs(); // the arrows' reach follows the tab in use, even when nothing scrolled
-    });
+    tick().then(() => document.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: still ? "auto" : "smooth" }));
   });
 
   const place = (pane: number) => {
@@ -1509,12 +1498,12 @@
              past the edge is mostly its X, so a click meant to go back would close it. -->
         <div class="tabs-wrap">
         {#if tabsOver.start}
-          <button class="flat icon-only tabs-step start" tabindex="-1" disabled={!tabsCan.start} title={_("Earlier tabs")} aria-label={_("Earlier tabs")} onclick={() => stepTabs(-1)}
+          <button class="flat icon-only tabs-step start" tabindex="-1" title={_("Earlier tabs")} aria-label={_("Earlier tabs")} onclick={() => stepTabs(-1)}
             ><Icon name="chevron-right" size={15} /></button
           >
         {/if}
         {#if tabsOver.end}
-          <button class="flat icon-only tabs-step end" tabindex="-1" disabled={!tabsCan.end} title={_("Later tabs")} aria-label={_("Later tabs")} onclick={() => stepTabs(1)}
+          <button class="flat icon-only tabs-step end" tabindex="-1" title={_("Later tabs")} aria-label={_("Later tabs")} onclick={() => stepTabs(1)}
             ><Icon name="chevron-right" size={15} /></button
           >
         {/if}
