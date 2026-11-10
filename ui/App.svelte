@@ -485,6 +485,35 @@
       );
   }
 
+  // ---- more tabs than the strip shows: it scrolls (the wheel, Ctrl+Tab, Alt+1–9), fades at an end
+  // with tabs past it, and All tabs lists every one. Its scrollbar stays hidden: a bar under 34px
+  // of tabs would crowd them, so the fade says there's more instead.
+  let tabsEl = $state<HTMLElement>();
+  /** Whether tabs are hidden past the strip's start and end, in reading order. */
+  let tabsOver = $state({ start: false, end: false });
+  let allTabs = $state<{ x: number; y: number } | null>(null);
+  function measureTabs() {
+    const el = tabsEl;
+    if (!el) return;
+    const at = Math.abs(el.scrollLeft); // 0 down to negative, right to left
+    const room = el.scrollWidth - el.clientWidth;
+    const over = { start: at > 1, end: at < room - 1 };
+    if (over.start !== tabsOver.start || over.end !== tabsOver.end) tabsOver = over;
+  }
+  // The strip's width and every tab's (titles change as shells run) can bring tabs in or out of view.
+  $effect(() => {
+    const el = tabsEl;
+    void strip.length;
+    if (!el) return;
+    const ro = new ResizeObserver(measureTabs);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    return () => ro.disconnect();
+  });
+  $effect(() => {
+    if (allTabs && !strip.length) allTabs = null;
+  });
+
   // ---- background tasks: a tab off the strip and the panes, still running, listed under Tasks
   // and brought back into a tab from there (or the palette). One that ends there stays, to be read.
   let showTasks = $state<{ x: number; y: number } | null>(null);
@@ -1398,7 +1427,7 @@
   onkeydowncapture={keydown}
   oninputcapture={cleanInput}
   onchangecapture={clampNumber}
-  onclick={() => ([tabMenu, showTasks, layoutsMenu, workspaceMenu] = [null, null, null, null])}
+  onclick={() => ([tabMenu, showTasks, layoutsMenu, workspaceMenu, allTabs] = [null, null, null, null, null])}
   onpointerdown={(e) => guidePop && !(e.target as Element).closest?.(".guide-pop, .guide-button") && closeGuide()}
 />
 
@@ -1441,7 +1470,14 @@
     <main class="center">
       <header class="strip">
         <Backdrop place="bar" tint={(a) => `rgba(var(--panel-rgb), ${a})`} />
-        <div class="tabs" onwheel={(e) => !e.deltaX && (e.currentTarget.scrollLeft += e.deltaY)}>
+        <div
+          class="tabs"
+          class:over-start={tabsOver.start}
+          class:over-end={tabsOver.end}
+          bind:this={tabsEl}
+          onscroll={measureTabs}
+          onwheel={(e) => !e.deltaX && (e.currentTarget.scrollLeft += e.deltaY)}
+        >
           {#each strip as t, i (t.key)}
             {@const look = lookOf(t.session)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1509,6 +1545,22 @@
         </div>
         <!-- the tools act on tabs, so they come as the tabs do: files and snippets with a terminal tab, broadcast with two tabs -->
         <div class="tools row">
+          <!-- every tab in a list, while some don't fit: first, right by the tabs it stands for -->
+          {#if tabsOver.start || tabsOver.end}
+            {@const label = _("All tabs ({n})", { n: strip.length })}
+            <button
+              class="flat icon-only"
+              class:on={!!allTabs}
+              title={label}
+              aria-label={label}
+              aria-expanded={!!allTabs}
+              onclick={(e) => {
+                e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                allTabs = allTabs ? null : { x: r.right, y: r.bottom + 5 };
+              }}><Icon name="chevron-down" /></button
+            >
+          {/if}
           <!-- Getting started's progress while tabs hide the start screen: a ring, the name and
                "3/8", opening the list in a popover under it. First, so it reads before the tools. -->
           {#if guideAway}
@@ -1887,6 +1939,29 @@
         <button onclick={() => ((naming = null), refocus())}>{_("Cancel")}</button>
       </div>
     </Modal>
+  {/if}
+  {#if allTabs && strip.length}
+    <!-- The keyboard starts on the tab in use, so the arrows step from where you are. -->
+    <div
+      class="menu tasks-list all-tabs"
+      aria-label={_("All tabs")}
+      {@attach menu(() => (allTabs = null), allTabs.x, allTabs.y)}
+      {@attach (el) => el.querySelector<HTMLElement>(".current")?.focus()}
+    >
+      {#each strip as t (t.key)}
+        {@const look = lookOf(t.session)}
+        <button
+          class:current={t.key === panes[focus]}
+          aria-current={t.key === panes[focus] ? "true" : undefined}
+          style:--kind={t.alive ? look.color : "var(--warn)"}
+          title={tipOf(t)}
+          onclick={() => ((allTabs = null), show(t.key))}
+        >
+          {#if t.alive}<SessionIcon icon={look.icon} size={15} still={look.still} />{:else}<Icon name="error" size={15} />{/if}
+          <span class="grow title">{titleOf(t)}</span>
+        </button>
+      {/each}
+    </div>
   {/if}
   {#if showTasks && tasks.length}
     <div class="menu tasks-list" {@attach menu(() => (showTasks = null), showTasks.x, showTasks.y)}>
@@ -2373,6 +2448,30 @@
     display: flex;
     overflow-x: auto;
     scrollbar-width: none;
+    --fade-start: 0px;
+    --fade-end: 0px;
+    --toward: right;
+    /* a tab scrolled into view (Ctrl+Tab, All tabs) stops clear of the fade */
+    scroll-padding-inline: 34px;
+  }
+  :global([dir="rtl"]) .tabs {
+    --toward: left;
+  }
+  /* tabs past an end: the strip fades out over the last 34px there, so it reads as going on */
+  .tabs.over-start {
+    --fade-start: 34px;
+  }
+  .tabs.over-end {
+    --fade-end: 34px;
+  }
+  .tabs:is(.over-start, .over-end) {
+    mask-image: linear-gradient(
+      to var(--toward),
+      transparent,
+      #000 var(--fade-start),
+      #000 calc(100% - var(--fade-end)),
+      transparent
+    );
   }
   .tab {
     position: relative;
@@ -2789,6 +2888,24 @@
   }
   .tasks-list .task {
     gap: 2px;
+  }
+  /* every open tab: as long as the window allows, then it scrolls */
+  .all-tabs {
+    max-width: min(377px, calc(100vw - 2 * 13px));
+    max-height: calc(100vh - var(--titlebar) - var(--bar) - 3 * 13px);
+    overflow-y: auto;
+  }
+  .all-tabs button {
+    flex: none;
+    gap: var(--gap);
+  }
+  .all-tabs button :global(.icon) {
+    color: var(--kind);
+  }
+  /* the tab in use, as a picked option */
+  .all-tabs button.current {
+    background: var(--picked);
+    color: var(--fg);
   }
   .tasks-list .task :global(.icon) {
     color: var(--kind);
