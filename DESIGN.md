@@ -765,11 +765,13 @@ Quiet and exact: small, flat faces that brighten a step under the pointer.
   its 26px and fade in over the next 21px, and the chevron's button covers both, since what shows
   of a tab there is mostly its X and a click meant to go back would close it. It glides the strip
   a page that way. A page that would carry the tab in use out of view stops short, with that tab
-  at the far side clear of the chevron and fade there; the next click carries on past it. A tab scrolled into view (a click, Ctrl+Tab, All tabs) glides too, so tabs of
-  one name still show which way the strip went, and stops clear of the chevron and the fade
+  at the far side clear of the chevron and fade there; the next click carries on past it. A tab
+  scrolled into view (a click, Ctrl+Tab, All tabs) glides too, so tabs of one name still show
+  which way the strip went, and stops clear of the chevron and the fade
   (`scroll-padding-inline`). Reduced motion makes both jump.
 - **All tabs:** while tabs don't fit, the tab-strip tools start with a flat chevron ("All tabs
-  (16)"), amber while open. It drops a menu (`.tasks-list.all-tabs`) hung from its end, one row per
+  (16)"), amber while open. It drops a menu (`.tasks-list.all-tabs`) hung from its end (right to
+  left too), one row per
   tab in strip order: its icon in its kind hue and its name, the tab in use on the `picked` wash and
   holding the keyboard. It is as tall as the window allows, then scrolls; a click shows that tab.
 - **Session rack:** 21px rows, folders with a rotating caret (0.12s) and a hairline guide under

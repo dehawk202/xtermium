@@ -1625,7 +1625,9 @@
               onclick={(e) => {
                 e.stopPropagation();
                 const r = e.currentTarget.getBoundingClientRect();
-                allTabs = allTabs ? null : { x: r.right, y: r.bottom + 5 };
+                // hung from the button's end: its right edge, or its left one right to left
+                const rtl = document.documentElement.dir === "rtl";
+                allTabs = allTabs ? null : { x: rtl ? r.left : r.right, y: r.bottom + 5 };
               }}><Icon name="chevron-down" /></button
             >
           {/if}
@@ -3012,6 +3014,11 @@
     max-width: min(377px, calc(100vw - 2 * 13px));
     max-height: calc(100vh - var(--titlebar) - var(--bar) - 3 * 13px);
     overflow-y: auto;
+  }
+  /* right to left it starts at the button's left edge and opens over the tabs, not moved back by
+     its width as the list above and a menu at the pointer are (app.css) */
+  :global([dir="rtl"]) .all-tabs {
+    translate: none;
   }
   .all-tabs button {
     flex: none;
