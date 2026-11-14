@@ -25,6 +25,7 @@
   import LockScreen from "./lib/LockScreen.svelte";
   import Files from "./lib/Files.svelte";
   import History from "./lib/History.svelte";
+  import Rail from "./lib/Rail.svelte";
   import Sidebar from "./lib/Sidebar.svelte";
   import SignIn from "./lib/SignIn.svelte";
   import Snippets from "./lib/Snippets.svelte";
@@ -1435,14 +1436,15 @@
 {#if ready}
   <div class="app">
     {#if showSidebar && app.settings?.sidebar_collapsed}
-      <!-- Collapsed: the sidebar's foot in a column (the title bar's burger opens it out). -->
+      <!-- Collapsed: New session and the sessions as icons (Rail.svelte), then the sidebar's foot,
+           in a column on the window itself (the title bar's burger opens it out). -->
       <aside class="rack rail">
         <Backdrop place="sidebar" tint={(a) => `rgba(var(--panel-rgb), ${a})`} />
+        <Rail {live} current={activeTab && !coopTab(activeTab) ? sessionKey(activeTab.session) : ""} onopen={open} onnew={(folder) => (editor = { session: newSession("ssh", folder), index: null })} onimport={() => (showImport = true)} />
         <!-- The sidebar shows messages; collapsed, they wait behind this. -->
         {#if app.status}
           <button class="flat icon-only" onclick={() => expandSidebar()} title={app.status} aria-label={app.status}><Icon name="info-circle" size={16} color="var(--weak)" /></button>
         {/if}
-        <span class="grow"></span>
         {@render corner()}
       </aside>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1450,7 +1452,7 @@
     {:else if showSidebar}
       <aside class="rack" style:width="{app.settings?.sidebar_width ?? 280}px">
         <Backdrop place="sidebar" tint={(a) => `rgba(var(--panel-rgb), ${a})`} />
-        <Sidebar {live} current={activeTab && !coopTab(activeTab) ? sessionKey(activeTab.session) : ""} onopen={open} onedit={(session, index) => (editor = { session, index })} />
+        <Sidebar {live} current={activeTab && !coopTab(activeTab) ? sessionKey(activeTab.session) : ""} onopen={open} onedit={(session, index) => (editor = { session, index })} onimport={() => (showImport = true)} />
         {#if app.status}
           <div class="status row" role="status">
             {#if app.statusLink?.text === app.status}
@@ -2098,7 +2100,7 @@
 <!-- The bar's centre says where the keyboard goes, the focused tab, and opens the palette, which goes anywhere else. Locked, it says nothing. -->
 <TitleBar>
   <!-- What reaches past any one session stands by the mark: the sidebar's burger, a local shell,
-       tunnels, saved layouts and a new session. -->
+       tunnels and saved layouts. New session lives atop the sidebar, with the sessions. -->
   {#snippet tools()}
     {#if ready && app.locked === null && !lock.locked}
       {@const open = showSidebar && !app.settings?.sidebar_collapsed}
@@ -2106,7 +2108,6 @@
       <button class="flat icon-only bar-tool" tabindex="-1" onclick={localShell} title={tip(_("Open a local shell"), "local-shell")} aria-label={_("Open a local shell")}><Icon name="terminal" size={21} /></button>
       <button class="flat icon-only bar-tool" tabindex="-1" class:on={showTunnels} onclick={() => (showTunnels = !showTunnels)} title={tip(_("SSH tunnels"), "tunnels")} aria-label={_("SSH tunnels")}><Icon name="transfer-alt" size={21} /></button>
       <button class="flat icon-only bar-tool" tabindex="-1" class:on={!!layoutsMenu} onclick={(e) => (layoutsMenu = below(e, layoutsMenu))} title={_("Saved layouts: sessions opened together in panes")} aria-label={_("Saved layouts")}><Icon name="grid-alt" size={21} /></button>
-      <button class="icon-only bar-tool new" tabindex="-1" onclick={createSession} title={tip(_("New session"), "new-session")} aria-label={_("New session")}><Icon name="plus" size={21} /></button>
     {/if}
   {/snippet}
   <!-- The centre: what has the keyboard (a way into the palette), and the workspace's picker. Locked, nothing. -->
@@ -2154,8 +2155,9 @@
 </div>
 
 <style>
-  /* Rounded panels floating on the window, like a modern code editor: the sidebar, the tabs
-     with their panes, the file panel. The splitter is the gap between the first two. */
+  /* Rounded panels floating on the window, like a modern code editor: the tabs with their panes,
+     and the file panel. The sidebar sits on the window itself, beside them, as the title bar does
+     above. The splitter is the gap between the sidebar and the tabs. */
   .app {
     height: 100%;
     display: flex;
@@ -2170,6 +2172,10 @@
   }
 
   /* ---- the session rack (sidebar) ---- */
+  /* No panel of its own: the rack sits on the window, as the title bar's tools carried down the
+     left edge under the mark, so open or collapsed it never reads as an empty box. It keeps the
+     panel's shape (a transparent edge, the corners) so a sidebar picture (Backdrop) still lies in
+     a rounded panel when one is set. */
   .rack {
     flex: none;
     display: flex;
@@ -2177,7 +2183,7 @@
     position: relative;
     isolation: isolate; /* its Backdrop goes under the rest */
     min-width: 0;
-    background: rgba(var(--panel-rgb), var(--chrome-alpha));
+    border-color: transparent;
   }
   .status {
     gap: var(--gap);
@@ -2274,7 +2280,7 @@
     flex: none;
     cursor: col-resize;
   }
-  /* the collapsed sidebar: its foot in a column */
+  /* the collapsed sidebar: its sessions and foot in a column */
   .rail {
     width: calc(var(--control) + 2 * var(--gap) + 2px);
     align-items: center;
@@ -2295,21 +2301,6 @@
     min-height: 0;
     padding: 0;
     justify-content: center;
-  }
-  /* a new session is the bar's one standing action: a filled key, set a little apart */
-  .new {
-    margin-inline-start: 13px;
-    border: 0;
-    background: var(--raised);
-    color: var(--fg);
-  }
-  .new:hover {
-    background: var(--hover);
-  }
-  /* On light `raised` is barely off the bar's grey, so the key is white like the field beside it,
-     and see-through it is a second layer over the bar, as the field is. */
-  :global(:root[data-theme="light"]) .new:not(:hover) {
-    background: rgba(var(--deep-rgb), var(--chrome-alpha));
   }
   /* the field: never so wide that no bar is left to drag the window by */
   .finder {

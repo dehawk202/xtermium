@@ -73,11 +73,14 @@
   let {
     onopen,
     onedit,
+    onimport,
     live = new Map(),
     current = "",
   }: {
     onopen: (s: Session) => void;
     onedit: (s: Session, index: number | null) => void;
+    /** Opens Import sessions, for the empty sidebar's second button. */
+    onimport: () => void;
     /** Sessions with a tab, by `sessionKey`: true while one is connected. */
     live?: Map<string, boolean>;
     /** The `sessionKey` of the focused tab's session: its row is marked, so the green dots say
@@ -579,6 +582,12 @@
 {/snippet}
 
 <nav>
+  <!-- New session lives where sessions do: atop the sidebar, as atop the collapsed rail, level with
+       the tab strip and ruled off like it (the title bar keeps the tools for the whole window). -->
+  <div class="head">
+    <span class="title">{_("Sessions")}</span>
+    <button class="flat icon-only" title={tip(_("New session"), "new-session")} aria-label={_("New session")} onclick={() => newHere("")}><Icon name="plus" size={16} /></button>
+  </div>
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
   <div
     class="list"
@@ -592,6 +601,16 @@
     oncontextmenu={(e) => contextMenu(e, { root: true })}
   >
     {@render folder(tree)}
+    <!-- Nothing saved, not even a folder: say what goes here and how to fill it, rather than leave
+         a blank column. It goes once the first session or folder is there. -->
+    {#if !tree.children.size && !tree.items.length}
+      <div class="empty">
+        <p class="what">{_("No saved sessions yet")}</p>
+        <p class="weak">{_("Servers, desktops and websites you save wait here, in folders, one click from a tab.")}</p>
+        <button class="primary" onclick={() => newHere("")}><Icon name="plus" size={16} />{_("New session")}</button>
+        <button onclick={onimport}><Icon name="import" size={16} />{_("Import sessions")}</button>
+      </div>
+    {/if}
   </div>
 </nav>
 
@@ -727,14 +746,51 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    /* the first row's middle on the tab strip's middle, beside it */
-    padding: calc((var(--bar) - var(--row)) / 2) 5px 5px;
+    padding-block-end: 5px;
+  }
+  /* the sidebar's head: as tall as the tab strip beside it, with the same line under it */
+  .head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--bar);
+    padding-inline: 13px 5px;
+    box-shadow: inset 0 -1px var(--line);
+  }
+  .head .title {
+    color: var(--weak);
+    font-size: var(--t-s);
+    font-weight: 600;
   }
   .list {
     flex: 1;
     overflow: auto;
     display: flex;
     flex-direction: column;
+    padding: 5px 5px 0;
+  }
+  /* the empty sidebar: what goes here, then New session (the primary) and Import, full width */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 13px;
+  }
+  .empty p {
+    margin: 0;
+    line-height: 1.4;
+  }
+  .empty .what {
+    font-weight: 600;
+  }
+  .empty .weak {
+    margin-block-end: 8px;
+    font-size: var(--t-s);
+  }
+  .empty button {
+    justify-content: center;
+    gap: var(--gap);
   }
   /* where a dragged session or folder would land */
   .into {

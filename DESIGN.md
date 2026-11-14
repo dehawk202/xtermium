@@ -264,9 +264,10 @@ over the brand kit's logo.
 The feel is quiet and exact, as dense as a modern code editor: 13px text, 26px controls, 21px
 rows, small precise corners. JetBrains Mono, the brand's face, says everything short (titles,
 buttons, tags, the status bar, code); the system face says everything long (text, menus and
-lists), so the app still reads as a native tool. The sidebar (the session rack), the tab area
-with its panes, and the file panel are rounded panels floating a few pixels apart on a darker
-window. They are flat at rest and are told apart by tone and hairline, not by shadow. Only things
+lists), so the app still reads as a native tool. The tab area with its panes and the file panel
+are rounded panels floating a few pixels apart on a darker window; the sidebar (the session rack)
+sits on the window itself, beside them, as the title bar does above (a sidebar picture, when one
+is set, still lies in a rounded panel). They are flat at rest and are told apart by tone and hairline, not by shadow. Only things
 that float above the work cast a shadow: menus, dialogs, the command palette, toasts.
 
 Every proportion comes from the golden ratio (φ ≈ 1.618). Spacing steps along the Fibonacci
@@ -286,7 +287,7 @@ end names the exceptions).
 - The brand kit's horizontal logo on the start screen and in Settings › About; its own amber and
   white stay inside it.
 - Fibonacci spacing (1 2 3 5 8 13 21 34px) and five type sizes, both enforced by a test.
-- Rounded panels on a darker window. Flat at rest; shadows only on floating layers.
+- Rounded panels on a darker window, the sidebar on the window itself. Flat at rest; shadows only on floating layers.
 - Icon-only tool buttons with tooltips. Boxicons SVGs. Session and folder icons move on hover; interface icons only spin or pulse while something waits.
 - Right-to-left ready: logical properties throughout, with flips for chevrons, menus and carets.
 
@@ -376,7 +377,7 @@ From the back of the window to the hand, the website's near-black, with no blue 
 - **Inset Well** (`deep`): wells set into a panel: text fields, `kbd`, segmented controls, the
   sidebar's status pill, code snippets. In the light theme it is white, the lightest step.
 - **Base** (`bg`): the content area under the tabs, and the active tab that joins it.
-- **Surface** (`panel`): the sidebar, the tab strip, the file panel, the status bar, and every
+- **Surface** (`panel`): the tab strip, the file panel, the status bar, and every
   floating layer (menus, dialogs, palette, toasts at 98% opacity, or the Opacity setting with the
   Transparent effect on, up to 98%).
 - **Raised** (`raised`): button faces, menu-item hover, the current Settings page, scrollbar
@@ -523,7 +524,8 @@ mark alone (`Logo.svelte` with `mark`, 26px; or the picture chosen under Setting
 App icon, which also takes the mark's place on the start screen, the windows, the taskbar and the
 tray), then the main window's tools, icon-only, 21px glyphs in 26px squares 3px apart, `weak`
 until pointed at: the burger that collapses and expands the sidebar, a local shell,
-Tunnels and the saved layouts' menu, then, 13px apart, New session as a filled key (`raised`).
+Tunnels and the saved layouts' menu. New session isn't here: it is atop the rack, with the
+sessions it makes.
 In the centre: a field (an inset
 well, 26px tall, `clamp(233px, 38vw, 610px)` wide) naming where the keyboard goes: the focused
 tab's icon in its kind hue, its name (`short-strong`: mono 500, `fg`) and, in `weak`, what the shell or page says
@@ -548,8 +550,9 @@ strip's middle beside it (`calc((var(--bar) - var(--row)) / 2)` above it), and t
 holds the sidebar's foot and, while there is a message, a button for it that opens the sidebar. Finding a session is the palette's job (it searches names, addresses, folders and
 folder tags).
 
-Under the bar the window is padded by the gap (`--gap`, 5px) and holds up to three floating panels in a row:
-the session rack (resizable; it collapses to a 38px rail), the center (a 34px tab strip over
+Under the bar the window is padded by the gap (`--gap`, 5px) and holds, in a row, the session rack
+on the window itself (resizable; it collapses to a 38px rail; no panel, so it reads as the title
+bar's tools carried down the left edge and never as an empty box), then two floating panels: the center (a 34px tab strip over
 the panes), and the file panel (340px). The splitter between rack and center is the gap itself.
 Split panes are each their own panel (5px corners, 1px hairline) with the window's dark showing
 between them. Pane sizers are 6px hit areas centred on that gap, amber-tinted on hover.
@@ -760,11 +763,29 @@ Quiet and exact: small, flat faces that brighten a step under the pointer.
   it in `warn`. The tab's icon is always in its kind hue, and the active tab's name is in
   `short-strong`, as the title bar's field names it (the mono's widths don't change with weight,
   so the strip doesn't shift). A drag shows a 2px amber insertion bar.
+- **Rack head:** "Sessions" in `weak` label size, semibold, and New session as an icon-only `+`
+  at its trailing end, on a row as tall as the tab strip (`bar`) with the strip's hairline under
+  it, so the two read as one band. The collapsed rail's `+` sits at the same height.
 - **Session rack:** 21px rows, folders with a rotating caret (0.12s) and a hairline guide under
   each level. Leaves indent past the caret so icons in one level line up. A session with an open
   tab gets a 7px green dot on its icon's corner, hollow once the connection is gone. Chosen rows
   take the amber wash; the keyboard's row (`.current`) is `raised` with a 2px amber inset edge on
   its leading side. A marked session's or folder's name is in its mark.
+- **Empty rack:** with nothing saved (no session, no folder) the rack opens with "No saved sessions
+  yet" in semibold, a line in `weak` label size on what goes there, then New session (the gold
+  primary) and Import sessions, full width, in an `8px 13px` block. It goes with the first save.
+- **Collapsed rail:** on the window like the open rack (a sidebar picture, when set, fills it in a
+  rounded panel, as it does the open rack): its squares sit in one column under the mark. New
+  session at the top; under a hairline, level
+  with the tab strip's, each top-level folder (its icon in
+  its mark) and each session outside a folder (its icon in its kind hue), 26px squares in the
+  rack's order, scrolling without a bar when they don't fit; then the foot. A session's square
+  opens it. A folder's opens a menu beside the rail, level with it: the folder's name in
+  semibold, its own sessions, then each subfolder's under its path in `weak` label size (a `.sep`
+  group), ending with New session here. The open folder's square is `raised` and amber. Squares
+  and menu rows take the rack's green dot and the `.current` amber edge; a folder takes them
+  from the open sessions inside it. With nothing saved the rail says what the empty rack does:
+  New session is a gold primary square, with Import sessions under it.
 - **Sidebar foot:** the status pill (an inset well, label size in `weak`, fading in over 0.16s
   when a message arrives) on a row of its own, then, at the trailing end of the foot's row,
   Settings, Lock (when a lock is set), Terminal Co-op (in a ring, or signed in with Pro or its
