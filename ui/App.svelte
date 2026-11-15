@@ -5,7 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { bindings, cell, chord, DIRECTIONS, EDGES, even, fill as fillIn, MOVES, neighbour, nudge, resize as resized, placeholders, quickConnect, tile, tileRows, zoomed, type Filter, type Sizes } from "./lib/actions";
+  import { bindings, cell, chord, DIRECTIONS, EDGES, even, fill as fillIn, follow, MOVES, neighbour, nudge, resize as resized, placeholders, quickConnect, tile, tileRows, zoomed, type Filter, type Sizes } from "./lib/actions";
   import { addressSession, broadcasts, COLORS, isDesktop, joinsBroadcast, newSession, openUrl, seeThrough, type CoopRemote, type Meta, type SavedLayout, type Session, type Snippet, type Update } from "./lib/api";
   import Backdrop from "./lib/Backdrop.svelte";
   import Guide, { guideRows, type Step } from "./lib/Guide.svelte";
@@ -32,7 +32,7 @@
   import Credentials from "./lib/Credentials.svelte";
   import StatusBar from "./lib/StatusBar.svelte";
   import { _, N_, setLanguage } from "./lib/i18n.svelte";
-  import { app, boot, dismiss, guideDone, lock, lookOf, notify, saveStore, shortcut, tell, tip, toast, toasts, sessionKey, siteIcon, syncNow, takeRestore, workspaceOp, type SyncSide } from "./lib/state.svelte";
+  import { app, boot, dismiss, guideDone, lock, lookOf, notify, saveStore, shortcut, tell, tip, toast, toasts, sessionId, sessionKey, siteIcon, syncNow, takeRestore, workspaceOp, type SyncSide } from "./lib/state.svelte";
   import Terminal, { IGNORED } from "./lib/Terminal.svelte";
   import TitleBar from "./lib/TitleBar.svelte";
   import WorkspacePicker from "./lib/WorkspacePicker.svelte";
@@ -47,7 +47,11 @@
     id: number;
     title: string;
     alive: boolean;
+    /** Ticked for broadcast: typed into, and shown while broadcast tiles the tabs. */
     broadcast: boolean;
+    /** The id of the workspace it was opened in (`app.store.id`): whose saved session it is (the
+     *  sidebar's marks), and where it shows when the strip keeps to the workspace in use. */
+    workspace: string;
     connected?: boolean;
     label?: string;
     color?: string;
@@ -117,10 +121,13 @@
   boot().then(() => {
     ready = true;
     applyCustomCss();
-    for (const [s, label] of takeRestore()) {
+    for (const [s, label, workspace] of takeRestore()) {
       const key = open(s);
       if (key !== undefined && label) update(key, { label });
+      if (key !== undefined && workspace !== undefined) update(key, { workspace });
     }
+    // The pane goes to the last tab reopened in this workspace, not to one the strip leaves out.
+    settle();
     for (const t of app.store.tunnel.filter((t) => t.autostart))
       invoke("tunnel_start", { name: t.name }).catch((e) => (app.status = `${t.name}: ${e}`));
   });
@@ -172,9 +179,6 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => invoke("save_settings", { settings }).catch((e) => (app.status = String(e))), 150);
   });
-  $effect(() => {
-    invoke("set_broadcast", { on: broadcasting });
-  });
   // Open tabs are remembered (Settings > General > Reopen tabs).
   let tabsTimer = 0;
   $effect(() => {
@@ -185,8 +189,9 @@
       return { ...$state.snapshot(t.session), color: t.color ?? t.session.color };
     });
     const labels = kept.map((t) => t.label ?? "");
+    const workspaces = kept.map((t) => t.workspace);
     clearTimeout(tabsTimer);
-    tabsTimer = setTimeout(() => invoke("save_tabs", { tabs: list, labels }).catch((e) => (app.status = String(e))), 300);
+    tabsTimer = setTimeout(() => invoke("save_tabs", { tabs: list, labels, workspaces }).catch((e) => (app.status = String(e))), 300);
   });
 
   // Broadcast outlines animate as one: every outline animation starts at the same moment, so
@@ -201,13 +206,18 @@
 
   // ---- tabs and panes ----
   /** The tabs in the strip: all but the background and detached ones. */
-  const strip = $derived(tabs.filter((t) => !t.background && !t.detached));
+  const strip = $derived(tabs.filter((t) => !t.background && !t.detached && inWorkspace(t)));
   /** Background and detached tabs, as Tasks lists them. */
   const tasks = $derived(tabs.filter((t) => t.background || t.detached));
   const count = (l: Layout) => (l === "tiles" ? Math.max(1, strip.length) : GRID[l][0] * GRID[l][1]);
   const activeTab = $derived(tabs.find((t) => t.key === panes[focus]));
-  /** Saved sessions with a tab, by `sessionKey`: true while one of those tabs is up (the sidebar marks them). */
-  const live = $derived(tabs.filter((t) => !coopTab(t)).reduce((m, t) => m.set(sessionKey(t.session), !!m.get(sessionKey(t.session)) || t.alive), new Map<string, boolean>()));
+  /** This workspace's saved sessions with a tab, by `sessionId`: true while one of those tabs is up
+   *  (the sidebar marks them). A tab opened in another workspace is another session, whatever its name. */
+  const live = $derived(
+    tabs
+      .filter((t) => !coopTab(t) && t.workspace === app.store.id && sessionId(t.session))
+      .reduce((m, t) => m.set(sessionId(t.session), !!m.get(sessionId(t.session)) || t.alive), new Map<string, boolean>()),
+  );
 
   /** Opens a tab and returns its key; undefined if the session opened outside xtermium. A tab that
    *  a website tab the ring shares opened (`from`: a pop-up, a link for a new tab, whoever clicked
@@ -220,7 +230,7 @@
     }
     const key = nextKey++;
     const share = !!from?.id && !!app.coop.ring?.owner && app.coop.shared.includes(from.id);
-    tabs.push({ key, session, id: 0, title: session.name, alive: true, broadcast: true, share });
+    tabs.push({ key, session, id: 0, title: session.name, alive: true, broadcast: true, workspace: app.store.id, share });
     toPane(key);
     return key;
   }
@@ -229,6 +239,9 @@
   // as the `coop` event's list changes ----
   /** The number at its owner of the shared tab a tab shows; 0 for any other tab. */
   const coopTab = (t: Tab) => (t.session.kind.type === "coop" ? t.session.kind.tab : 0);
+  /** The strip shows the tab: always, unless it keeps to the workspace in use (Settings › General);
+   *  then the tabs opened in it, and the ring's, which belong to no workspace. */
+  const inWorkspace = (t: Tab) => !app.settings?.tabs_by_workspace || t.workspace === app.store.id || !!coopTab(t);
   const remoteName = (r: CoopRemote) => (r.owner_name ? `${r.owner_name}: ${r.title}` : r.title);
   /** Ring tabs closed by hand: they stay closed until their owner stops sharing them. */
   const hidden = new Set<number>();
@@ -259,7 +272,7 @@
     const key = nextKey++;
     const session = newSession("coop", "", remoteName(r));
     session.kind = { type: "coop", tab: r.id, picture: String(r.kind).toLowerCase() === "picture", owner: r.owner_name ?? "" };
-    tabs.push({ key, session, id: 0, title: r.title, alive: true, broadcast: false });
+    tabs.push({ key, session, id: 0, title: r.title, alive: true, broadcast: false, workspace: app.store.id });
     const free = panes.indexOf(null);
     if (layout !== "tiles" && free >= 0) panes[free] = key;
     toast(_("{name} shared {title}.", { name: r.owner_name || _("Someone"), title: r.title }), panes.includes(key) ? undefined : { label: _("Show"), run: () => show(key) });
@@ -289,7 +302,9 @@
   /** A tab coming on screen: tiled, it gets a pane of its own; else an empty pane, if there is
    *  one, or the focused one. */
   function toPane(key: number) {
-    if (layout === "tiles") panes = [...panes.filter((p) => p !== null), key];
+    // Broadcast's tiles are the ticked tabs: a new one is ticked, so its pane comes by itself.
+    if (tiling) return void tick().then(() => ((focus = Math.max(0, panes.indexOf(key))), refocus()));
+    if (layout === "tiles") panes =[...panes.filter((p) => p !== null), key];
     else panes[panes.includes(null) ? panes.indexOf(null) : focus] = key;
     focus = panes.indexOf(key);
     tick().then(refocus);
@@ -432,16 +447,24 @@
   /** Show a tab in the focused pane, or focus the pane already showing it; a background tab
    *  comes back to the strip. */
   function show(key: number) {
-    if (tabs.find((t) => t.key === key)?.detached) return reattach(key);
-    update(key, { background: false });
+    const t = tabs.find((t) => t.key === key);
+    if (t?.detached) return reattach(key);
+    // Brought back from Tasks, it joins the workspace in use: the strip may keep to that one.
+    if (t?.background) update(key, { background: false, workspace: app.store.id });
     const p = panes.indexOf(key);
     if (p >= 0) focus = p;
-    else panes[focus] = key;
+    else if (!tiling) panes[focus] = key;
+    else if (t && joinsBroadcast(t.session.kind)) {
+      // Broadcast's tiles are the ticked tabs: showing one ticks it.
+      t.broadcast = true;
+      return void tick().then(() => ((focus = Math.max(0, panes.indexOf(key))), refocus()));
+    } else app.status = _("Broadcast shows only the tabs it types into. Turn it off, or pick another layout, to see this tab.");
     tick().then(refocus);
   }
 
   /** Put tabs that aren't visible into empty panes. */
   function fill() {
+    if (tiling) return; // the ticked tabs, and no other
     const hidden = strip.map((t) => t.key).filter((k) => !panes.includes(k));
     panes = panes.map((p) => p ?? hidden.shift() ?? null);
   }
@@ -506,18 +529,65 @@
       );
   }
 
+  // ---- more tabs than the strip shows: it scrolls (the wheel, Ctrl+Tab, Alt+1–9), fades at an end
+  // with tabs past it, and All tabs lists every one. Its scrollbar stays hidden: a bar under 34px
+  // of tabs would crowd them, so the fade says there's more instead.
+  let tabsEl = $state<HTMLElement>();
+  /** Whether tabs are hidden past the strip's start and end, in reading order. */
+  let tabsOver = $state({ start: false, end: false });
+  let allTabs = $state<{ x: number; y: number } | null>(null);
+  function measureTabs() {
+    const el = tabsEl;
+    if (!el) return;
+    const at = Math.abs(el.scrollLeft); // 0 down to negative, right to left
+    const room = el.scrollWidth - el.clientWidth;
+    const over = { start: at > 1, end: at < room - 1 };
+    if (over.start !== tabsOver.start || over.end !== tabsOver.end) tabsOver = over;
+  }
+  // The strip's width and every tab's (titles change as shells run) can bring tabs in or out of view.
+  $effect(() => {
+    const el = tabsEl;
+    void strip.length;
+    if (!el) return;
+    const ro = new ResizeObserver(measureTabs);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    return () => ro.disconnect();
+  });
+  $effect(() => {
+    if (allTabs && !strip.length) allTabs = null;
+  });
+  /** The arrow over a faded end: the strip glides a page that way (`way`: -1 toward the start, 1
+   *  toward the end, in reading order). A page that would carry the tab in use out of view stops
+   *  short, with it at the far side (clear of the arrow and fade there), so you see where you were
+   *  before leaving it; the next click carries on past it. */
+  function stepTabs(way: -1 | 1) {
+    const el = tabsEl;
+    if (!el) return;
+    const rtl = document.documentElement.dir === "rtl";
+    let by = Math.max(el.clientWidth - 2 * 55, 55);
+    const a = el.querySelector<HTMLElement>(".tab.active");
+    if (a) {
+      const pad = parseFloat(getComputedStyle(el).scrollPaddingInlineStart) || 0;
+      const v = el.getBoundingClientRect();
+      const r = a.getBoundingClientRect();
+      // Toward the end the tabs move toward the start, so the tab in use may go as far as the
+      // start's padding; toward the start, as far as the end's.
+      const toLeft = way > 0 !== rtl;
+      const room = toLeft ? r.left - (v.left + pad) : v.right - pad - r.right;
+      // Already at that side, or past it: a whole page, so the click always moves the strip.
+      if (room >= 21) by = Math.min(by, room);
+    }
+    el.scrollBy({ left: way * (rtl ? -1 : 1) * by, behavior: still ? "auto" : "smooth" });
+  }
+
   // ---- background tasks: a tab off the strip and the panes, still running, listed under Tasks
   // and brought back into a tab from there (or the palette). One that ends there stays, to be read.
   let showTasks = $state<{ x: number; y: number } | null>(null);
   function toBackground(key: number) {
     const t = tabs.find((t) => t.key === key);
     if (!t) return;
-    t.background = true;
-    // Out of sight, out of broadcast.
-    if (t.broadcast) {
-      t.broadcast = false;
-      invoke("set_tab_broadcast", { id: t.id, on: false });
-    }
+    t.background = true; // out of the strip, so out of broadcast (`ticked`)
     unpane(key);
   }
 
@@ -854,7 +924,8 @@
   // The focused pane's tab stays in view in the strip (it scrolls when the tabs don't fit).
   $effect(() => {
     void panes[focus];
-    tick().then(() => document.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
+    // Gliding, so with tabs of one name you still see which way the strip went.
+    tick().then(() => document.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: still ? "auto" : "smooth" }));
   });
 
   const place = (pane: number) => {
@@ -962,14 +1033,37 @@
     run(id);
   }
 
-  /** Broadcast needs two or more tabs it reaches: terminals, remote desktops, BMC consoles. */
-  const canBroadcast = $derived(broadcasting || tabs.filter((t) => joinsBroadcast(t.session.kind)).length >= 2);
+  /** The tabs broadcast can reach: terminals, remote desktops and BMC consoles in the strip. */
+  const reachable = $derived(strip.filter((t) => joinsBroadcast(t.session.kind)));
+  /** Broadcast needs two or more of them. */
+  const canBroadcast = $derived(reachable.length >= 2);
+  /** The tabs broadcast types into: the ticked ones, whatever their kind, and no other. */
+  const ticked = $derived(broadcasting ? reachable.filter((t) => t.broadcast) : []);
+  /** Broadcast is on over the tiles: the panes are the ticked tabs, one each. */
+  const tiling = $derived(broadcasting && layout === "tiles");
+  // The backend types into exactly these: the whole list each time it changes (a tab's id is new
+  // after a reconnect, and 0 until it's up).
+  const tickedIds = $derived(ticked.map((t) => t.id).filter(Boolean).join());
+  $effect(() => {
+    invoke("set_broadcast", { ids: tickedIds ? tickedIds.split(",").map(Number) : [] });
+  });
+  // Ticking a tab shows its pane and unticking hides it, in the order they were ticked.
+  const tickedKeys = $derived(ticked.map((t) => t.key).join());
+  $effect(() => {
+    if (!tiling) return;
+    const keys = tickedKeys ? tickedKeys.split(",").map(Number) : [];
+    untrack(() => {
+      const was = panes[focus];
+      panes = follow(panes, keys);
+      focus = Math.max(0, panes.indexOf(was));
+    });
+  });
+  // With fewer than two tabs left to type into, there is nothing to broadcast: it turns off.
+  $effect(() => {
+    if (broadcasting && !canBroadcast) untrack(toggleBroadcast);
+  });
   /** Ticked tabs of more than one kind: terminals, remote desktops and consoles take keys differently. */
-  const mixed = $derived(
-    new Set(
-      tabs.filter((t) => t.broadcast && joinsBroadcast(t.session.kind)).map((t) => (broadcasts(t.session.kind) ? "term" : t.session.kind.type === "kvm" ? "kvm" : "desktop")),
-    ).size > 1,
-  );
+  const mixed = $derived(new Set(ticked.map((t) => (broadcasts(t.session.kind) ? "term" : t.session.kind.type === "kvm" ? "kvm" : "desktop"))).size > 1);
   $effect(() => {
     if (broadcasting && mixed)
       app.status = _(
@@ -1003,17 +1097,63 @@
   /** The layout to go back to when broadcast stops tiling every tab. */
   let untiled: Layout = "single";
 
-  /** Broadcast shows every tab at once, each in a pane of its own. */
+  /** Broadcast shows the tabs it types into at once, each in a pane of its own: the ticked ones. */
   function toggleBroadcast() {
-    if (!canBroadcast) return void (broadcastAlone = true); // from the keyboard: say why nothing happened
+    if (!broadcasting && !canBroadcast) return void (broadcastAlone = true); // from the keyboard: say why nothing happened
     broadcasting = !broadcasting;
     if (broadcasting) {
       guideDone("broadcast");
       untiled = layout;
-      setLayout("tiles"); // already tiled: the unticked tabs come back
-    } else if (layout === "tiles" && untiled !== "tiles") setLayout(untiled);
+      // The panes are the ticked tabs, in the strip's order to begin with; the effect above
+      // keeps them so. Set in one go: a tab left without a pane for a moment would put its
+      // terminal to sleep.
+      const was = panes[focus];
+      layout = "tiles";
+      panes = follow([], ticked.map((t) => t.key));
+      focus = Math.max(0, panes.indexOf(was));
+    } else if (layout === "tiles") {
+      // Back to the layout it started from; one that was tiled before shows every tab again.
+      if (untiled === "tiles") panes = strip.length ? strip.map((t) => t.key) : [null];
+      setLayout(strip.length > 1 ? untiled : "single");
+    }
     tick().then(refocus);
   }
+
+  // ---- the strip keeps to the workspace in use (Settings › General, or a tab's menu): tabs of
+  // the other workspaces run on, out of the strip and the panes, until their workspace is back.
+  /** Each workspace's panes as it was left, to find them again. */
+  const left = new Map<string, { layout: Layout; panes: (number | null)[]; focus: number }>();
+  let settledIn: string | undefined;
+  /** The panes after the strip changed under them (a workspace switch, the setting, tabs reopened):
+   *  what the workspace showed last, less the tabs the strip no longer has. */
+  function settle() {
+    if (broadcasting) toggleBroadcast();
+    const here = app.store.id;
+    if (here !== settledIn) {
+      if (settledIn !== undefined) left.set(settledIn, { layout, panes: [...panes], focus });
+      settledIn = here;
+      const back = app.settings?.tabs_by_workspace ? left.get(here) : undefined;
+      if (back) [layout, panes, focus] = [back.layout, back.panes, back.focus];
+    }
+    const keys = new Set(strip.map((t) => t.key));
+    const kept = panes.map((p) => (p !== null && keys.has(p) ? p : null));
+    panes = layout === "tiles" ? kept.filter((p) => p !== null) : kept;
+    if (!panes.length) panes = [null];
+    focus = Math.min(focus, panes.length - 1);
+    if (strip.length <= 1 && layout !== "single") return setLayout("single");
+    fill();
+    tick().then(refocus);
+  }
+  $effect(() => {
+    void [app.store.id, app.settings?.tabs_by_workspace];
+    if (ready) untrack(settle);
+  });
+  // A tab of a workspace that's gone (deleted) joins the one in use, or no strip would show it.
+  $effect(() => {
+    const known = new Set(app.workspaceList.map((w) => w.id));
+    const here = app.store.id;
+    untrack(() => tabs.forEach((t) => known.has(t.workspace) || (t.workspace = here)));
+  });
 
   /** The focused tab's font only (or `t`'s, for the wheel); Settings › Terminal sets everyone's size. */
   function zoom(by: number, t = activeTab) {
@@ -1429,7 +1569,7 @@
   onkeydowncapture={keydown}
   oninputcapture={cleanInput}
   onchangecapture={clampNumber}
-  onclick={() => ([tabMenu, showTasks, layoutsMenu, workspaceMenu] = [null, null, null, null])}
+  onclick={() => ([tabMenu, showTasks, layoutsMenu, workspaceMenu, allTabs] = [null, null, null, null, null])}
   onpointerdown={(e) => guidePop && !(e.target as Element).closest?.(".guide-pop, .guide-button") && closeGuide()}
 />
 
@@ -1440,7 +1580,7 @@
            in a column on the window itself (the title bar's burger opens it out). -->
       <aside class="rack rail">
         <Backdrop place="sidebar" tint={(a) => `rgba(var(--panel-rgb), ${a})`} />
-        <Rail {live} current={activeTab && !coopTab(activeTab) ? sessionKey(activeTab.session) : ""} onopen={open} onnew={(folder) => (editor = { session: newSession("ssh", folder), index: null })} onimport={() => (showImport = true)} />
+        <Rail {live} current={activeTab && !coopTab(activeTab) && activeTab.workspace === app.store.id ? sessionId(activeTab.session) : ""} onopen={open} onnew={(folder) => (editor = { session: newSession("ssh", folder), index: null })} onimport={() => (showImport = true)} />
         <!-- The sidebar shows messages; collapsed, they wait behind this. -->
         {#if app.status}
           <button class="flat icon-only" onclick={() => expandSidebar()} title={app.status} aria-label={app.status}><Icon name="info-circle" size={16} color="var(--weak)" /></button>
@@ -1452,7 +1592,7 @@
     {:else if showSidebar}
       <aside class="rack" style:width="{app.settings?.sidebar_width ?? 280}px">
         <Backdrop place="sidebar" tint={(a) => `rgba(var(--panel-rgb), ${a})`} />
-        <Sidebar {live} current={activeTab && !coopTab(activeTab) ? sessionKey(activeTab.session) : ""} onopen={open} onedit={(session, index) => (editor = { session, index })} onimport={() => (showImport = true)} />
+        <Sidebar {live} current={activeTab && !coopTab(activeTab) && activeTab.workspace === app.store.id ? sessionId(activeTab.session) : ""} onopen={open} onedit={(session, index) => (editor = { session, index })} onimport={() => (showImport = true)} />
         {#if app.status}
           <div class="status row" role="status">
             {#if app.statusLink?.text === app.status}
@@ -1473,7 +1613,27 @@
     <main class="center">
       <header class="strip">
         <Backdrop place="bar" tint={(a) => `rgba(var(--panel-rgb), ${a})`} />
-        <div class="tabs" onwheel={(e) => !e.deltaX && (e.currentTarget.scrollLeft += e.deltaY)}>
+        <!-- The arrows lie over the faded ends and take every click there: what shows of a tab
+             past the edge is mostly its X, so a click meant to go back would close it. -->
+        <div class="tabs-wrap">
+        {#if tabsOver.start}
+          <button class="flat icon-only tabs-step start" tabindex="-1" title={_("Earlier tabs")} aria-label={_("Earlier tabs")} onclick={() => stepTabs(-1)}
+            ><Icon name="chevron-right" size={15} /></button
+          >
+        {/if}
+        {#if tabsOver.end}
+          <button class="flat icon-only tabs-step end" tabindex="-1" title={_("Later tabs")} aria-label={_("Later tabs")} onclick={() => stepTabs(1)}
+            ><Icon name="chevron-right" size={15} /></button
+          >
+        {/if}
+        <div
+          class="tabs"
+          class:over-start={tabsOver.start}
+          class:over-end={tabsOver.end}
+          bind:this={tabsEl}
+          onscroll={measureTabs}
+          onwheel={(e) => !e.deltaX && (e.currentTarget.scrollLeft += e.deltaY)}
+        >
           {#each strip as t, i (t.key)}
             {@const look = lookOf(t.session)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1497,7 +1657,6 @@
                   checked={t.broadcast}
                   onchange={(e) => {
                     t.broadcast = (e.target as HTMLInputElement).checked;
-                    invoke("set_tab_broadcast", { id: t.id, on: t.broadcast });
                     tick().then(refocus);
                   }}
                 />
@@ -1539,8 +1698,27 @@
             </div>
           {/each}
         </div>
+        </div>
         <!-- the tools act on tabs, so they come as the tabs do: files and snippets with a terminal tab, broadcast with two tabs -->
         <div class="tools row">
+          <!-- every tab in a list, while some don't fit: first, right by the tabs it stands for -->
+          {#if tabsOver.start || tabsOver.end}
+            {@const label = _("All tabs ({n})", { n: strip.length })}
+            <button
+              class="flat icon-only"
+              class:on={!!allTabs}
+              title={label}
+              aria-label={label}
+              aria-expanded={!!allTabs}
+              onclick={(e) => {
+                e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                // hung from the button's end: its right edge, or its left one right to left
+                const rtl = document.documentElement.dir === "rtl";
+                allTabs = allTabs ? null : { x: rtl ? r.left : r.right, y: r.bottom + 5 };
+              }}><Icon name="chevron-down" /></button
+            >
+          {/if}
           <!-- Getting started's progress while tabs hide the start screen: a ring, the name and
                "3/8", opening the list in a popover under it. First, so it reads before the tools. -->
           {#if guideAway}
@@ -1877,6 +2055,12 @@
         >
       {/if}
       <button onclick={() => toBackground(k)}><Icon name="layers" />{_("Run in the background")}</button>
+      {#if app.workspaces.length && app.settings}
+        {@const s = app.settings}
+        <button class="sep" role="menuitemcheckbox" aria-checked={s.tabs_by_workspace} onclick={() => (s.tabs_by_workspace = !s.tabs_by_workspace)}>
+          {#if s.tabs_by_workspace}<Icon name="check" />{/if}{_("Only this workspace's tabs")}
+        </button>
+      {/if}
       <button class="sep" onclick={() => close(k)}><Icon name="x" />{_("Close tab")}{@render keys("close-tab")}</button>
       <button disabled={strip.length < 2} onclick={() => closeOthers(k)}>{_("Close other tabs")}</button>
       <button disabled={strip.at(-1)?.key === k} onclick={() => closeOthers(k, true)}>{_("Close tabs to the right")}</button>
@@ -1919,6 +2103,29 @@
         <button onclick={() => ((naming = null), refocus())}>{_("Cancel")}</button>
       </div>
     </Modal>
+  {/if}
+  {#if allTabs && strip.length}
+    <!-- The keyboard starts on the tab in use, so the arrows step from where you are. -->
+    <div
+      class="menu tasks-list all-tabs"
+      aria-label={_("All tabs")}
+      {@attach menu(() => (allTabs = null), allTabs.x, allTabs.y)}
+      {@attach (el) => el.querySelector<HTMLElement>(".current")?.focus()}
+    >
+      {#each strip as t (t.key)}
+        {@const look = lookOf(t.session)}
+        <button
+          class:current={t.key === panes[focus]}
+          aria-current={t.key === panes[focus] ? "true" : undefined}
+          style:--kind={t.alive ? look.color : "var(--warn)"}
+          title={tipOf(t)}
+          onclick={() => ((allTabs = null), show(t.key))}
+        >
+          {#if t.alive}<SessionIcon icon={look.icon} size={15} still={look.still} />{:else}<Icon name="error" size={15} />{/if}
+          <span class="grow title">{titleOf(t)}</span>
+        </button>
+      {/each}
+    </div>
   {/if}
   {#if showTasks && tasks.length}
     <div class="menu tasks-list" {@attach menu(() => (showTasks = null), showTasks.x, showTasks.y)}>
@@ -2081,7 +2288,11 @@
     <!-- The backend's questions are in English; their titles are known words. -->
     <!-- Escape (or ×) answers no: Cancel, or Reject for a host key. -->
     <Modal title={_(p.title)} width={377} onclose={() => answer(false)}>
-      <div class="prompt">{p.text}</div>
+      <!-- A fingerprint is compared character by character: in the mono, on a line of its own. -->
+      {@const lines = p.text.split("\n")}
+      <div class="prompt">
+        {#each lines as line, i (i)}<div>{#if line.startsWith("SHA256:") || lines[i - 1]?.endsWith("SHA256:")}<code>{line}</code>{:else}{line || " "}{/if}</div>{/each}
+      </div>
       {#if p.input !== null}
         <input type={p.input ? "password" : "text"} bind:value={p.answer} {@attach (el) => el.focus()} onkeydown={(e) => e.key === "Enter" && (e.preventDefault(), answer(true))} />
         {#if p.input && p.title === "Password"}
@@ -2089,9 +2300,9 @@
         {/if}
         <div class="row"><button class="primary" onclick={() => answer(true)}>{_("Continue")}</button><button onclick={() => answer(false)}>{_("Cancel")}</button></div>
       {:else}
-        <!-- Trusting a key is a security call: Reject holds the keyboard, so Enter never trusts one;
-             Shift+Tab reaches Trust. -->
-        <div class="row"><button class="primary" onclick={() => answer(true)}>{_("Trust")}</button><button {@attach (el) => el.focus()} onclick={() => answer(false)}>{_("Reject")}</button></div>
+        <!-- Enter trusts a host, server or BMC seen for the first time, as ssh's "yes" does (the
+             owner's call). A key that changed is refused whatever is answered (ssh.rs, rdp.rs, kvm). -->
+        <div class="row"><button class="primary" {@attach (el) => el.focus()} onclick={() => answer(true)}>{_("Trust")}</button><button onclick={() => answer(false)}>{_("Reject")}</button></div>
       {/if}
     </Modal>
   {/if}
@@ -2114,7 +2325,7 @@
   {#if ready && app.locked === null && !lock.locked}
     {@const ws = _("Workspace: {name}", { name: app.workspace || _("Default") })}
     <div class="finder">
-      <div class="field">
+      <div class="field" class:tinted-field={!!app.store.color} style:--ws={app.store.color || null}>
         <button class="flat where" tabindex="-1" title={tip(_("Command palette"), "palette")} onclick={() => run("palette")}>
           {#if activeTab}
             {@const look = lookOf(activeTab.session)}
@@ -2231,7 +2442,6 @@
     color: var(--fg);
   }
   .guide-button .count {
-    font-family: var(--short);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
@@ -2368,6 +2578,17 @@
     border-radius: 0;
     justify-content: center;
   }
+  /* The workspace in use wears its colour here (the picker sets it): the field's edge, a faint
+     wash and its arrow, so two workspaces aren't taken for each other at a glance. */
+  .tinted-field,
+  :global(:root[data-theme="light"]) .tinted-field {
+    border-color: color-mix(in srgb, var(--ws) 55%, var(--field-line));
+    background: color-mix(in srgb, var(--ws) 13%, rgba(var(--deep-rgb), 1));
+  }
+  .tinted-field .workspace {
+    border-inline-start-color: color-mix(in srgb, var(--ws) 34%, var(--line));
+    color: var(--ws);
+  }
   .layouts {
     display: flex;
     gap: 3px;
@@ -2392,12 +2613,82 @@
     background: rgba(var(--panel-rgb), var(--chrome-alpha));
     box-shadow: inset 0 -1px var(--line);
   }
+  /* the tabs and the arrows over their ends. At an end with tabs past it the tabs are hidden under
+     the arrow (`--edge`, its width) and fade in over `--fade` after it; a tab scrolled into view
+     stops clear of both. */
+  .tabs-wrap {
+    --edge: var(--control);
+    --fade: 21px;
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+  }
   .tabs {
     flex: 1;
     min-width: 0;
     display: flex;
     overflow-x: auto;
     scrollbar-width: none;
+    --hide-start: 0px;
+    --fade-start: 0px;
+    --hide-end: 0px;
+    --fade-end: 0px;
+    --toward: right;
+    scroll-padding-inline: calc(var(--edge) + var(--fade));
+  }
+  :global([dir="rtl"]) .tabs {
+    --toward: left;
+  }
+  /* tabs past an end: hidden under its arrow, then fading in, so the strip reads as going on */
+  .tabs.over-start {
+    --hide-start: var(--edge);
+    --fade-start: var(--fade);
+  }
+  .tabs.over-end {
+    --hide-end: var(--edge);
+    --fade-end: var(--fade);
+  }
+  .tabs-step {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 1px; /* clear of the strip's bottom line */
+    /* over the fade too, which shows a tab's X: a click there goes this way, it closes nothing */
+    width: calc(var(--edge) + var(--fade));
+    padding: 0;
+    border-radius: 0;
+    color: var(--fg);
+  }
+  /* the chevron in the outer part, over the hidden tabs; the faded ones show through the rest */
+  .tabs-step.start {
+    inset-inline-start: 0;
+    padding-inline-end: var(--fade);
+  }
+  .tabs-step.end {
+    inset-inline-end: 0;
+    padding-inline-start: var(--fade);
+  }
+  .tabs-step:hover:not(:disabled) {
+    background: none;
+    color: var(--gold);
+  }
+  /* one chevron, pointing the way it goes: turned around for the start, and both in right to left */
+  .tabs-step.start :global(.icon),
+  :global([dir="rtl"]) .tabs-step.end :global(.icon) {
+    transform: scaleX(-1);
+  }
+  :global([dir="rtl"]) .tabs-step.start :global(.icon) {
+    transform: none;
+  }
+  .tabs:is(.over-start, .over-end) {
+    mask-image: linear-gradient(
+      to var(--toward),
+      transparent var(--hide-start),
+      #000 calc(var(--hide-start) + var(--fade-start)),
+      #000 calc(100% - var(--hide-end) - var(--fade-end)),
+      transparent calc(100% - var(--hide-end))
+    );
   }
   .tab {
     position: relative;
@@ -2429,11 +2720,6 @@
     background: rgba(var(--bg-rgb), var(--solid));
     box-shadow: none;
     color: var(--fg);
-  }
-  /* where typing goes reads as the title bar's field says it: the mono's widths don't change
-     with its weight, so the strip doesn't shift */
-  .tab.active .title {
-    font-weight: 500;
   }
   .tab.visible::before {
     opacity: var(--dim);
@@ -2491,16 +2777,6 @@
     width: 160px;
     height: var(--control);
     margin: 0 2px;
-  }
-  .menu .tint {
-    gap: var(--gap);
-    padding: 5px 8px;
-  }
-  .menu .tint .swatch {
-    min-height: 0;
-    padding: 0;
-    border-radius: 50%;
-    background: var(--c);
   }
   .tab .close {
     min-height: var(--row);
@@ -2776,7 +3052,6 @@
     opacity: 0.85;
   }
   .lead {
-    font-family: var(--short);
     font-size: var(--t-xl);
     font-weight: 600;
     letter-spacing: -0.025em;
@@ -2814,6 +3089,29 @@
   }
   .tasks-list .task {
     gap: 2px;
+  }
+  /* every open tab: as long as the window allows, then it scrolls */
+  .all-tabs {
+    max-width: min(377px, calc(100vw - 2 * 13px));
+    max-height: calc(100vh - var(--titlebar) - var(--bar) - 3 * 13px);
+    overflow-y: auto;
+  }
+  /* right to left it starts at the button's left edge and opens over the tabs, not moved back by
+     its width as the list above and a menu at the pointer are (app.css) */
+  :global([dir="rtl"]) .all-tabs {
+    translate: none;
+  }
+  .all-tabs button {
+    flex: none;
+    gap: var(--gap);
+  }
+  .all-tabs button :global(.icon) {
+    color: var(--kind);
+  }
+  /* the tab in use, as a picked option */
+  .all-tabs button.current {
+    background: var(--picked);
+    color: var(--fg);
   }
   .tasks-list .task :global(.icon) {
     color: var(--kind);
@@ -2860,9 +3158,12 @@
     overflow-wrap: anywhere;
   }
   div.prompt {
-    white-space: pre-line;
     user-select: text;
     word-break: break-word;
+  }
+  /* a SHA-256 fingerprint in base64 fits the narrow dialog's line at the label size */
+  div.prompt code {
+    font-size: var(--t-s);
   }
   .preview {
     display: block;

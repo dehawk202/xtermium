@@ -96,6 +96,7 @@ fn ciphers(list: &mut Vec<String>) {
 impl Store {
     pub fn sanitize(&mut self) {
         self.agent_prompt = lines(&self.agent_prompt).chars().take(32_768).collect();
+        self.color = color(&self.color);
         for s in &mut self.sessions {
             s.folder = folder(&s.folder);
             s.notes = lines(&s.notes);
@@ -310,6 +311,7 @@ impl Store {
         }
         self.layouts.retain(|l| !l.name.is_empty() && !l.panes.is_empty() && seen.insert(l.name.clone()));
         self.profiles(&mut Default::default());
+        self.ids(&mut Default::default(), None);
     }
 
     /// Gives every website session a browser profile of its own (web.rs): one without, or with one
@@ -379,6 +381,7 @@ impl Settings {
         if !crate::settings::COOP_IDLE.contains(&self.coop_idle) {
             self.coop_idle = d.coop_idle;
         }
+        self.rdp_clipboard = self.rdp_clipboard.min(3);
         if self.automation_port < 1024 {
             self.automation_port = d.automation_port;
         }

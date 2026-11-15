@@ -60,6 +60,8 @@ The macOS build ships unsigned, and nobody has run these on a Mac yet.
 - Getting started away from the start screen: the pill at the tab bar's end, its popover
   under it (lined up with the pill's end, the keyboard on Try it, Escape back to the
   terminal), the palette's Getting started and the Done toast's Show.
+- More tabs than fit: the trackpad's sideways scroll and the mouse wheel over the tab strip, the
+  arrows over its faded ends and the All tabs list.
 
 ## Linux
 
@@ -69,20 +71,52 @@ The macOS build ships unsigned, and nobody has run these on a Mac yet.
 - The clipboard on X11 and Wayland, in terminals and in Co-op.
 - Getting started away from the start screen, as under macOS: the pill, its popover and where
   the keyboard goes, on X11 and Wayland.
+- More tabs than fit, as under macOS: the strip's fades (CSS masks on WebKitGTK), its arrows and
+  the All tabs list.
 
 ## Right to left
 
 - The Arabic locale with the new title bar, the sidebar row on the tab line and the
   Getting started guide.
+- More tabs than fit in Arabic: the strip scrolls from the right, each arrow points and goes the
+  way its end leads, and the All tabs list opens on screen.
 
 ## Windows
 
 - Unlocking with Windows Hello (needs a camera or a fingerprint reader).
+- The All tabs list over a website or BMC console tab: the view steps aside while it's open.
 
 ## Remote desktops
 
-- RDP to xrdp: the picture is drawn sheared, row by row (an open decoder bug). Then the
-  resize that keeps the session and the login with a saved password, on a real xrdp host.
+- RDP to xrdp: resizing the tab (the resize that keeps the session), on a real xrdp host. The
+  picture and the saved-password login were seen right against the
+  `scottyhardy/docker-remote-desktop` container on 2026-11-14 (helper on the individual IronRDP
+  crates, no vendored patches); that container never answered a resize.
+- The shared clipboard on macOS and Linux (text and pictures both ways, files to the desktop),
+  and files from the desktop pasted in Explorer on Windows with the current helper.
+- The Windows shortcuts on the desktop (Win+E, Alt+Tab, Alt+F4) with a key remapper running,
+  and in a tab moved to a window of its own.
+- A shared RDP desktop in a Terminal Co-op ring: the guest's picture and pointer, and what a
+  guest with control can paste (the owner's clipboard once it was offered to the desktop).
+- The RDP helper's macOS and Linux builds (compiled first by the nightly).
+- Broadcast's ticks with a BMC console among the tabs: an unticked one gets no keys and leaves
+  the tiles. Seen with local shells and with an RDP tab to the xrdp container on 2026-11-14 (a
+  key typed in a shell reached the desktop only while its tab was ticked); text typed in a
+  terminal didn't show in that desktop's field, which a real Windows host should be tried for.
+
+## Tabs and workspaces
+
+- "Only this workspace's tabs" with a website or BMC console tab open in the workspace left
+  behind: its native view must go out of sight with the tab and come back with it (seen with
+  local shells only, 2026-11-14).
+- Ids on two syncing computers updated from a version before ids: each gives the same ids to
+  the same store, so the first sync after the update should ask nothing (unit-tested: two
+  copies of one store come out identical; not run against the sync server with two devices).
+- An AI agent session on the computer that reported "not a valid Win32 application": here a
+  PATH entry in quotes holding npm's `claude` and `claude.cmd` reproduced the lookup and the
+  fix was seen working (2026-11-14), but what that computer's PATH holds isn't known.
+- The trust prompt for a BMC's certificate: Enter trusts, and the fingerprint is set in the
+  mono (seen with an SSH host key and an RDP server's key).
 
 ## Automation
 

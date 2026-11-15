@@ -38,6 +38,14 @@
   import { passkeyMake, passkeysWork } from "./passkey";
   import { filled } from "./slider";
 
+  /** What crosses RDP's shared clipboard (src/rdp.rs `TO_DESKTOP`, `FROM_DESKTOP`): the mode, its name and its tip. */
+  const CLIPBOARD: [number, string, string][] = [
+    [0, N_("Off"), N_("Nothing crosses the clipboard")],
+    [1, N_("To the desktop"), N_("What you copy here can be pasted on the remote desktop")],
+    [2, N_("From the desktop"), N_("What you copy on the remote desktop can be pasted here")],
+    [3, N_("Both ways"), N_("What you copy on either side can be pasted on the other")],
+  ];
+
   /** `onrun`: runs a command in a new local shell (the MCP page's Run buttons; App.svelte). */
   let { onclose, onrun }: { onclose: () => void; onrun: (command: string) => void } = $props();
   const s = $derived(app.settings!);
@@ -157,6 +165,8 @@
       N_("Reconnect by itself when a connection drops (up to 8 tries, waiting longer each time)"),
       N_("Remote desktop"),
       N_("Picture"),
+      N_("Shared clipboard"),
+      N_("The Windows key and system shortcuts (Win+E, Alt+Tab) go to the remote desktop while it has the keyboard"),
       N_("The file panel opens the host's shared folders (SMB) with the desktop's login, without asking"),
     ],
     workspaces: [N_("Default workspace"), N_("New workspace"), N_("Sync")],
@@ -858,6 +868,7 @@
     <div class="col">
       <label class="check"><input type="checkbox" bind:checked={s.confirm_close} />{_("Ask before closing a tab that is still connected")}</label>
       <label class="check"><input type="checkbox" bind:checked={s.keep_running} />{_("Keep running in the tray when the window is closed, so tabs and background tasks go on")}</label>
+      <label class="check"><input type="checkbox" bind:checked={s.tabs_by_workspace} />{_("Show only the tabs opened in the workspace in use; the others keep running until you switch back")}</label>
       <label class="check"><input type="checkbox" bind:checked={s.status_bar} />{_("Show a status bar under each pane: connection, uptime, encryption and response time")}</label>
       <!-- last, so the note under the list is read with it -->
       <label class="check"><input type="checkbox" bind:checked={s.restore_tabs} />{_("Reopen the tabs that were open when xtermium closed")}</label>
@@ -1577,6 +1588,25 @@ xtermium close 3`}</pre>
       <QualityBar bind:value={s.rdp_quality} />
     </div>
     <p class="weak">{_("For RDP sessions that don't have their own setting. Applies the next time a session connects.")}</p>
+    <div class="form">
+      <span>{_("Shared clipboard")}</span>
+      <div class="row wrap" role="group" aria-label={_("Shared clipboard")}>
+        {#each CLIPBOARD as [mode, name, tip] (mode)}
+          <button class:selected={s.rdp_clipboard === mode} aria-pressed={s.rdp_clipboard === mode} title={_(tip)} onclick={() => (s.rdp_clipboard = mode)}>{_(name)}</button>
+        {/each}
+        {@render back(["rdp_clipboard"], (d) => _(CLIPBOARD.find(([mode]) => mode === d.rdp_clipboard)?.[1] ?? ""))}
+      </div>
+    </div>
+    <p class="weak">
+      {app.os === "windows"
+        ? _("What you copy crosses between this computer and RDP desktops: text, pictures and files.")
+        : _("What you copy crosses between this computer and RDP desktops: text and pictures both ways, files to the desktop.")}
+    </p>
+    {#if app.os === "windows"}
+      <label class="check" title={_("Off: they act on this computer. Ctrl+Alt+Del and Win+L always do.")}>
+        <input type="checkbox" bind:checked={s.rdp_keyboard} />{_("The Windows key and system shortcuts (Win+E, Alt+Tab) go to the remote desktop while it has the keyboard")}
+      </label>
+    {/if}
     <label class="check"><input type="checkbox" bind:checked={s.smb_auto_login} />{_("The file panel opens the host's shared folders (SMB) with the desktop's login, without asking")}</label>
   {:else if page === "backup"}
     <h3>{_("Sessions")}</h3>
@@ -1837,8 +1867,6 @@ xtermium close 3`}</pre>
     justify-content: flex-start;
     color: var(--weak);
     border: 0;
-    /* a list of places, read down like the rows: the system face */
-    font-family: var(--ui);
     /* a long name (some languages') takes two lines rather than running out of the list */
     white-space: normal;
     text-align: start;

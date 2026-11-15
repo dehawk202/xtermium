@@ -9,7 +9,7 @@
   import Icon from "./Icon.svelte";
   import { menu } from "./menu";
   import SessionIcon from "./SessionIcon.svelte";
-  import { app, folderColor, lookOf, sessionKey } from "./state.svelte";
+  import { app, folderColor, lookOf, sessionId } from "./state.svelte";
 
   let {
     onopen,
@@ -23,9 +23,9 @@
     onnew: (folder: string) => void;
     /** Opens Import sessions, offered while nothing is saved. */
     onimport: () => void;
-    /** Sessions with a tab, by `sessionKey`: true while one is connected (Sidebar.svelte's). */
+    /** Sessions with a tab, by `sessionId`: true while one is connected (Sidebar.svelte's). */
     live?: Map<string, boolean>;
-    /** The `sessionKey` of the focused tab's session. */
+    /** The `sessionId` of the focused tab's session. */
     current?: string;
   } = $props();
 
@@ -48,10 +48,10 @@
   /** A folder's state, as its open sessions give it: true when one is connected, false when all
    *  of them are disconnected, undefined with none open. So a collapsed folder still shows the dot. */
   const liveIn = (p: string) => {
-    const on = app.store.session.filter((s) => within(s, p)).map((s) => live.get(sessionKey(s))).filter((v) => v !== undefined);
+    const on = app.store.session.filter((s) => within(s, p)).map((s) => live.get(sessionId(s))).filter((v) => v !== undefined);
     return on.length ? on.includes(true) : undefined;
   };
-  const currentIn = (p: string) => app.store.session.some((s) => within(s, p) && sessionKey(s) === current);
+  const currentIn = (p: string) => app.store.session.some((s) => within(s, p) && sessionId(s) === current);
 
   /** A folder's sessions as its menu lists them: its own first, then each subfolder's, depth first. */
   function groups(p: string): { path: string; sessions: Session[] }[] {
@@ -83,8 +83,8 @@
 
 {#snippet session(s: Session)}
   {@const look = lookOf(s)}
-  {@const on = live.get(sessionKey(s))}
-  <button class="flat icon-only slot" class:live={on === true} class:idle={on === false} class:current={current === sessionKey(s)} title={s.name} aria-label={s.name} onclick={() => onopen(s)}>
+  {@const on = live.get(sessionId(s))}
+  <button class="flat icon-only slot" class:live={on === true} class:idle={on === false} class:current={current === sessionId(s)} title={s.name} aria-label={s.name} onclick={() => onopen(s)}>
     <SessionIcon icon={look.icon} color={look.color} still={look.still} size={16} />
   </button>
 {/snippet}
@@ -105,7 +105,7 @@
         <SessionIcon icon={look.icon} color={look.color} still={look.still} size={16} />
       </button>
     {/each}
-    {#each loose as s (sessionKey(s))}{@render session(s)}{/each}
+    {#each loose as s (sessionId(s))}{@render session(s)}{/each}
   </div>
 {:else}
   <!-- the rest of the rail stays empty, so the foot keeps to the bottom -->
@@ -118,11 +118,11 @@
     <span class="head">{nameOf(p)}</span>
     {#each groups(p) as g (g.path)}
       {#if g.path !== p}<span class="group sep">{g.path.slice(p.length + 1)}</span>{/if}
-      {#each g.sessions as s (sessionKey(s))}
+      {#each g.sessions as s (sessionId(s))}
         {@const look = lookOf(s)}
-        {@const on = live.get(sessionKey(s))}
+        {@const on = live.get(sessionId(s))}
         <!-- act first, then close: `p` and `s` are read from `shown`, which closing clears -->
-        <button class:live={on === true} class:idle={on === false} class:current={current === sessionKey(s)} onclick={() => (onopen(s), (shown = null))}>
+        <button class:live={on === true} class:idle={on === false} class:current={current === sessionId(s)} onclick={() => (onopen(s), (shown = null))}>
           <SessionIcon icon={look.icon} color={look.color} still={look.still} size={16} /><span class="name">{s.name}</span>
         </button>
       {/each}
