@@ -47,14 +47,13 @@ Still to see:
 
 ## macOS
 
-The macOS build ships unsigned, and nobody has run these on a Mac yet.
+The macOS build is signed and notarized (since v0.10.0), but nobody has run these on a Mac yet.
 
 - The fix for the SSH key picker hanging ([issue #40](https://github.com/xtermium/xtermium/issues/40)): native dialogs now open with the calling window as their parent (PR #39). Not confirmed on a Mac.
 - The app's own title bar: the overlay style with its three buttons, dragging.
 - The per-system shortcuts (⌘ in place of Ctrl), as the wiki's shortcut table lists them.
-- Opening the unsigned `.dmg` past Gatekeeper, as the Installation page describes it.
-- Developer ID signing and notarization (scripts/apple-env.sh): no build has run with the
-  Apple secrets yet.
+- Opening the signed, notarized `.dmg` downloaded in a browser: Gatekeeper asks only its usual
+  question about an app from the internet, with no Privacy & Security › Open Anyway.
 - The Co-op idle clock (`CGEventSourceSecondsSinceLastEventType`): compiled only by the
   release and nightly builds.
 - Getting started away from the start screen: the pill at the tab bar's end, its popover
