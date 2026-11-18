@@ -1061,6 +1061,33 @@ mod tests {
         assert!(vault.lock().unwrap().as_ref().unwrap().1["logins"].is_string());
     }
 
+    /// The server deletes an account's cloud copy once its Pro has ended (the sync server's
+    /// docs/plan.md §7). This device keeps every session and changes nothing; with Pro again it
+    /// uploads afresh from revision 1.
+    #[tokio::test]
+    async fn pro_ended_and_the_cloud_copy_gone_keeps_this_devices_data() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (url, vault) = server().await;
+        let mut a = device(&["a1", "a2"]);
+        a.recovery = Some(toml::to_string(&vault::wrap("correct horse battery", &a.key).unwrap()).unwrap());
+        for _ in 0..3 {
+            add(&mut a, "more");
+            assert!(sync(&mut a, &Api::new(&url, "t").unwrap(), None).await.unwrap().pushed);
+        }
+        let (key, state) = (a.key, a.state.clone());
+        *vault.lock().unwrap() = None; // Pro ended: the watchdog deleted every revision
+        let lapsed = Api::new(&url, "lapsed").unwrap();
+        let e = sync(&mut a, &lapsed, None).await.unwrap_err().downcast::<Trouble>().unwrap();
+        assert!(matches!(e, Trouble::NeedsPro { .. }));
+        assert_eq!(names(&a), ["a1", "a2", "more", "more", "more"]);
+        assert!(a.key == key && a.state == state && a.recovery.is_some(), "nothing here changed");
+        // Pro again: the next sync finds no cloud copy and uploads this device's as the first revision.
+        let o = sync(&mut a, &Api::new(&url, "t").unwrap(), None).await.unwrap();
+        assert!(o.pushed && !o.pulled);
+        assert_eq!(vault.lock().unwrap().as_ref().unwrap().0, 1);
+        assert_eq!(a.state.revision, 1);
+    }
+
     #[tokio::test]
     async fn two_devices() {
         let _ = rustls::crypto::ring::default_provider().install_default();
