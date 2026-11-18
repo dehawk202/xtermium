@@ -70,7 +70,7 @@ There is no password. A person signs in with an account they already have at Goo
 
 ### Vault
 
-`Authorization: Bearer <token>` on every call. Uploading needs Pro: `PUT` answers `402 {"error": "..."}` without it, and the client shows the message as it is with a link to get Pro. `GET` and `DELETE` work without Pro, so an account whose Pro ended can still get its data onto a new device and can still delete its cloud copy.
+`Authorization: Bearer <token>` on every call. Uploading needs Pro: `PUT` answers `402 {"error": "..."}` without it, and the client shows the message as it is with a link to get Pro. The cloud copy is kept only while Pro is on: within the hour after Pro ends (the paid period of a cancelled subscription, a failed renewal's 7-day grace, a refund), the server deletes every revision, and `GET` answers `404`. The client changes nothing on this device then: a sync finds no cloud copy, tries to upload it as the first one and gets `402`, so every file stays as it was. It drops Pro (`sync_pro`) on that `402` and asks `GET /v1/account` again, as it does at every start. With Pro again, the next sync uploads this device's data as revision 1. `DELETE` works without Pro.
 
 | Method and path | Body | Response |
 |---|---|---|

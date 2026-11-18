@@ -30,7 +30,8 @@ right way, in seconds, and trusts what they type to land where they meant.
   at once.
 - **Encrypted and synced:** everything on disk is encrypted with a data key kept in the OS
   keychain (a recovery passphrase can restore it); workspaces sync end-to-end encrypted.
-  Uploading needs Pro; downloading and deleting your data stay free.
+  Syncing needs Pro, and the cloud copy is kept only while Pro is on: when it ends, the server
+  deletes it and every computer keeps its own data.
 - **Terminal Co-op (Pro):** share tabs with up to two more people, peer to peer; the sync server
   only introduces them.
 - **Automatable:** an MCP server and the `xtermium` command line drive the same tools, so AI

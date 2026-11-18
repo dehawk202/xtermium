@@ -268,6 +268,11 @@ function troubled(t: Trouble) {
     sync.error = _("Signed out: sign in again to sync.");
   } else if (t.kind === "needs_pro") {
     [sync.needsPro, sync.error] = [true, t.message];
+    // Pro has ended: this device stops showing it at once (the remembered flag holds offline and at
+    // start-up), then the account's own answer fills in the rest. The data here is untouched.
+    app.settings!.sync_pro = false;
+    if (sync.account) sync.account.pro.active = false;
+    loadAccount();
   } else {
     const now = Date.now();
     retry.since ||= now;
@@ -402,7 +407,11 @@ export async function boot() {
   });
   lock.locked = b.lock;
   loadLock().catch(() => {});
-  if (!b.locked) syncNow();
+  if (!b.locked) {
+    syncNow();
+    // Whether Pro is still on, before anything shows it: `sync_pro` is only what the server said last time.
+    loadAccount();
+  }
 }
 
 // ---- the lock (src/lock.rs): a lock screen over every window until it's you ----
