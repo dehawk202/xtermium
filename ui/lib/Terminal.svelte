@@ -390,6 +390,8 @@
 
     // Text on the cell grid, each row clipped to itself so repainting a neighbour never leaves a
     // glyph's overhang behind.
+    // Cells run left to right in any interface language (as in glyphs.ts `pad`).
+    c.direction = "ltr";
     c.textBaseline = "alphabetic";
     c.font = font(0);
     for (let y = 0; y < n; y++) {
