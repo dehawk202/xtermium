@@ -39,7 +39,7 @@ scoop install xtermium/xtermium
 curl -fsSL https://xtermium.com/install.sh | sh
 ```
 
-Both scripts check each download against its sha256 before installing anything. The [latest release](https://github.com/xtermium/xtermium/releases/latest) has every file to download by hand (`.exe`, `.msi`, portable `.zip`, `.deb`, `.rpm`, `.AppImage`, `.dmg`). The macOS app isn't signed yet: [Installation › macOS](https://github.com/xtermium/xtermium/wiki/Installation#macos) says how to open it. [Nightly builds](https://github.com/xtermium/xtermium/wiki/Installation#nightly-builds) carry what the next release will.
+Both scripts check each download against its sha256 before installing anything. The [latest release](https://github.com/xtermium/xtermium/releases/latest) has every file to download by hand (`.exe`, `.msi`, portable `.zip`, `.deb`, `.rpm`, `.AppImage`, `.dmg`). The macOS app is signed with a Developer ID and notarized by Apple. [Nightly builds](https://github.com/xtermium/xtermium/wiki/Installation#nightly-builds) carry what the next release will.
 
 ## What you get
 
